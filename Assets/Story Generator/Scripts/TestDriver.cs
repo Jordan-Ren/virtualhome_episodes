@@ -66,6 +66,11 @@ namespace StoryGenerator
         private List<GameObject> rooms = new List<GameObject>();
 
         WaitForSeconds WAIT_AFTER_END_OF_SCENE = new WaitForSeconds(3.0f);
+        public string outputPath;
+        private bool episodeDone;
+
+        private int episodeNum = -1;
+        AsyncOperation asyncLoadLevel;
 
         [Serializable]
         class SceneData
@@ -110,6 +115,7 @@ namespace StoryGenerator
             commServer.Driver = this;
 
             ProcessHome(false);
+            yield return null;
             DeleteChar();
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
 
@@ -118,8 +124,21 @@ namespace StoryGenerator
             {
                 commServer.UnlockProcessing(); // Allow to proceed with requests
             }
+            Debug.Log("start");
             //StartCoroutine(ProcessNetworkRequest());
-            StartCoroutine(ProcessInputRequest());
+            if (EpisodeNumber.episodeNum == -1) {
+                EpisodeNumber.episodeNum = 0;
+                episodeNum = EpisodeNumber.episodeNum;
+                Debug.Log($"init episode number {episodeNum}");
+                // Load correct scene
+
+                SceneManager.LoadScene(episodeNum);
+                yield return null;
+            } else {
+                Debug.Log($"next episode number {EpisodeNumber.episodeNum}");
+                episodeNum = EpisodeNumber.episodeNum;
+                StartCoroutine(ProcessInputRequest(episodeNum));
+            }
         }
 
         private void InitServer()
@@ -198,9 +217,21 @@ namespace StoryGenerator
                 yield return enumerator.Current;
         }
 
-        IEnumerator ProcessInputRequest()
+        IEnumerator waitForSceneLoad(int sceneNumber)
+        {
+            while (SceneManager.GetActiveScene().buildIndex != sceneNumber)
+            {
+                yield return null;
+            }
+        }
+        IEnumerator ProcessInputRequest(int episode)
         {
             yield return null;
+            string episodePath = $"Episodes/Episode{episode}";
+            TextAsset episodeFile = Resources.Load<TextAsset>(episodePath);
+            Episode currentEpisode = JsonUtility.FromJson<Episode>(episodeFile.text);
+            currentEpisode.ClearDataFile(episode);
+                
             sceneCameras = ScriptUtils.FindAllCameras(transform);
             numSceneCameras = sceneCameras.Count;
             cameras = sceneCameras.ToList();
@@ -210,8 +241,9 @@ namespace StoryGenerator
             OneTimeInitializer homeInitializer = new OneTimeInitializer();
             EnvironmentGraphCreator currentGraphCreator = null;
             EnvironmentGraph currentGraph = null;
-            //int expandSceneCount = 0;
+            Debug.Log("Initialize Rooms");
 
+            // EXPAND_SCENE
             InitRooms();
 
             //add one character by default
@@ -219,7 +251,7 @@ namespace StoryGenerator
             CharacterControl newchar;
             newchar = AddCharacter(configchar.character_resource, false, configchar.mode, configchar.character_position, configchar.initial_room);
 
-
+            Debug.Log("added Chars");
             characters.Add(newchar);
             CurrentStateList.Add(null);
             numCharacters++;
@@ -228,15 +260,13 @@ namespace StoryGenerator
             cameras.AddRange(charCameras);
             cameraInitializer.initialized = false;
 
+            Debug.Log("Graph update");
             if (currentGraph == null)
             {
                 currentGraphCreator = new EnvironmentGraphCreator(dataProviders);
                 currentGraph = currentGraphCreator.CreateGraph(transform);
             }
-            else
-            {
-                currentGraph = currentGraphCreator.UpdateGraph(transform);
-            }
+
             bool keyPressed = false;
 
             ExecutionConfig config = new ExecutionConfig();
@@ -254,6 +284,18 @@ namespace StoryGenerator
             // Create canvas and event system
             GameObject newCanvas = new GameObject("Canvas");
             Canvas canv = newCanvas.AddComponent<Canvas>();
+            TextMeshProUGUI tasksUI = canv.gameObject.AddComponent<TextMeshProUGUI>();
+            List<string> goals = new List<string>();
+            tasksUI.fontSize = 18;
+            tasksUI.text = "Tasks: \n";
+            foreach (Task t in currentEpisode.task_goal) {
+                string action = t.action;
+                string obj = action.Split('{', '}')[1];
+                string verb = action.Split('_')[0];
+                tasksUI.text += $"{verb} {obj} \n";
+                goals.Add($"<char0> [{verb}] <{obj}>");
+            }
+
             canv.renderMode = RenderMode.ScreenSpaceOverlay;
             newCanvas.AddComponent<CanvasScaler>();
             newCanvas.AddComponent<GraphicRaycaster>();
@@ -268,14 +310,19 @@ namespace StoryGenerator
             goOpen.SetActive(false);
             goGrab.SetActive(false);
 
+            Vector3 previousPos = new Vector3(0,0,0);
+
             //Boolean openableOrGrabbable = false;
             //Boolean openedOrGrabbed = false;
             List<string> scriptLines = new List<string>();
-            while (true)
+            //Script sequence for data recording (as scriptLines gets cleared)
+            List<string> scriptSequence = new List<string>();
+            while (!episodeDone)
             {
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
                 {
                     string move = "<char0> [walkforward]";
+                    scriptSequence.Add(move);
                     scriptLines.Add(move);
                     Debug.Log("move forward");
                     keyPressed = true;
@@ -283,6 +330,7 @@ namespace StoryGenerator
                 else if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
                 {
                     string move = "<char0> [turnleft]";
+                    scriptSequence.Add(move);
                     scriptLines.Add(move);
                     Debug.Log("move left");
                     keyPressed = true;
@@ -290,6 +338,7 @@ namespace StoryGenerator
                 else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
                 {
                     string move = "<char0> [turnright]";
+                    scriptSequence.Add(move);
                     scriptLines.Add(move);
                     Debug.Log("move right");
                     keyPressed = true;
@@ -361,6 +410,7 @@ namespace StoryGenerator
                             {
                                 Debug.Log("opened");
                                 string action = String.Format("<char0> [open] <{0}> ({1})", objectName, objectId);
+                                scriptSequence.Add($"<char0> [open] <{objectName}>");
                                 scriptLines.Add(action);
                                 //openedOrGrabbed = true;
                                 goOpen.SetActive(false);
@@ -388,6 +438,7 @@ namespace StoryGenerator
                             {
                                 Debug.Log("grabbed");
                                 string action = String.Format("<char0> [grab] <{0}> ({1})", objectName, objectId);
+                                scriptSequence.Add($"<char0> [grab] <{objectName}>");
                                 Debug.Log(action);
                                 scriptLines.Add(action);
                                 //openedOrGrabbed = true;
@@ -404,7 +455,7 @@ namespace StoryGenerator
 
                     }
                 }
-
+                
                 /*if (openableOrGrabbable)
                 {
                     foreach (GameObject gameObj in GameObject.FindGameObjectsWithTag("Button"))
@@ -413,7 +464,33 @@ namespace StoryGenerator
                     }
                     //Destroy(button.gameObject);
                 }*/
+                // Record Position
+                if (newchar.transform.position != previousPos) {
+                    currentEpisode.AddCoord(newchar.transform.position);
+                }
+                previousPos = newchar.transform.position;
 
+                // Check if Task Completed
+                for (int i = 0; i < scriptSequence.Count; i++) {
+                    if (goals.Contains(scriptSequence[i])) 
+                    {
+                        goals.Remove(scriptSequence[i]);
+                        tasksUI.text = "Tasks: \n";
+                        foreach (string goal in goals) {
+                            string[] g = goal.Split(' ');
+                            Debug.Log(g[1]);
+                            Debug.Log(g[2]);
+                            string obj = g[2].Split('<', '>')[1];
+                            string verb = g[1].Split('[', ']')[1];
+                            tasksUI.text += $"{verb} {obj} \n";
+                        }
+                    }
+                }
+                if (goals.Count == 0) {
+                    currentEpisode.RecordData(episode);
+                    episodeDone = true;
+                    episodeNum++;
+                }
                 if (keyPressed)
                 {
                     Debug.Log("key pressed");
@@ -456,11 +533,27 @@ namespace StoryGenerator
 
                     }*/
                 }
-
+                //Write some text to the correct data file
+                currentEpisode.AddAction(scriptSequence);
+                scriptSequence.Clear();
                 yield return null;
-
             }
-
+            Debug.Log("done");
+            EpisodeNumber.episodeNum++;
+            string nextEpisodePath = $"Episodes/Episode{episode + 1}";
+            TextAsset nextEpisodeFile = Resources.Load<TextAsset>(nextEpisodePath);
+            Episode nextEpisode = JsonUtility.FromJson<Episode>(nextEpisodeFile.text);
+            nextEpisode.ClearDataFile(episode + 1);
+            int nextSceneIndex = nextEpisode.env_id;
+            if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings 
+                && SceneManager.GetActiveScene().buildIndex != nextSceneIndex)
+            {
+                Debug.Log($"loading episode: {nextSceneIndex}");
+                SceneManager.LoadScene(nextSceneIndex);
+                yield break;
+            }
+            Debug.Log($"Scene Loaded {SceneManager.GetActiveScene().buildIndex}");
+            yield return null;
         }
 
         // TODO: move this to utils
@@ -479,7 +572,6 @@ namespace StoryGenerator
             curr_button.GetComponent<RectTransform>().SetParent(panel.transform);
             curr_button.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, 0, 100);
             curr_button.layer = 5;
-
         }
         IEnumerator ProcessNetworkRequest()
         {
@@ -1883,6 +1975,64 @@ namespace StoryGenerator
             }
             return result;
         }
+    }
+
+    [System.Serializable]
+    public class Episode
+    {
+        public int env_id;
+        public int task_id;
+        public int episode;
+        public string task_name;
+        public int level;
+        public string[] init_rooms;
+        public Task[] task_goal;
+        public int[] graph;
+
+        private List<Vector3> positions = new List<Vector3>();
+
+        private List<string> scriptActions = new List<string>();
+
+        public Vector3 previousPos = new Vector3(0, 0, 0);
+
+        public void ClearDataFile(int episode)
+        {
+            string outputPath = $"Assets/Resources/Episodes/Episode{episode}Data.txt";
+             using (FileStream fs = File.Create(outputPath)){}
+        }
+
+        public void RecordData(int episode) 
+        {
+            HashSet<Vector3> seen = new HashSet<Vector3>();
+            string outputPath = $"Assets/Resources/Episodes/Episode{episode}Data.txt";
+            StreamWriter outputFile = new StreamWriter(outputPath, true);
+            foreach (Vector3 pos in positions) {
+                if (!seen.Contains(pos)) {
+                    outputFile.WriteLine(pos.ToString());
+                    seen.Add(pos);
+                }
+            }
+            foreach (string action in scriptActions) {
+                outputFile.WriteLine(action);
+            }
+            outputFile.Close();
+        }
+
+        public void AddCoord(Vector3 coord)
+        {
+            positions.Add(coord);
+        }
+
+        public void AddAction(List<string> actions)
+        {
+            scriptActions.AddRange(actions);
+        }
+    }
+    [System.Serializable]
+    public class Task
+    {
+        public string action;
+        public int repititions;
     }
 
 }
