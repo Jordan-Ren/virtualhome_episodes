@@ -66,11 +66,12 @@ namespace StoryGenerator
         private List<GameObject> rooms = new List<GameObject>();
 
         WaitForSeconds WAIT_AFTER_END_OF_SCENE = new WaitForSeconds(3.0f);
-        public string outputPath;
-        private bool episodeDone;
 
+        private Color startcolor;
+        Renderer rend;
+
+        private bool episodeDone;
         private int episodeNum = -1;
-        AsyncOperation asyncLoadLevel;
 
         [Serializable]
         class SceneData
@@ -124,7 +125,10 @@ namespace StoryGenerator
             {
                 commServer.UnlockProcessing(); // Allow to proceed with requests
             }
+            //StartCoroutine(ProcessNetworkRequest());
             Debug.Log("start");
+            StartCoroutine(ProcessInputRequest(0));
+            /*
             //StartCoroutine(ProcessNetworkRequest());
             if (EpisodeNumber.episodeNum == -1) {
                 EpisodeNumber.episodeNum = 0;
@@ -139,6 +143,7 @@ namespace StoryGenerator
                 episodeNum = EpisodeNumber.episodeNum;
                 StartCoroutine(ProcessInputRequest(episodeNum));
             }
+            */
         }
 
         private void InitServer()
@@ -158,6 +163,27 @@ namespace StoryGenerator
         private void OnApplicationQuit()
         {
             commServer?.Stop();
+        }
+
+        void OnMouseEnter()
+        {
+            if (GetComponent<Renderer>() != null)
+            {
+                Debug.Log("HIGHLIGHT");
+                rend = GetComponent<Renderer>();
+                startcolor = rend.material.color;
+                rend.material.color = Color.yellow;
+            }
+
+        }
+
+        void OnMouseExit()
+        {
+            if (rend != null)
+            {
+                Debug.Log("UNHIGHLIGHT");
+                rend.material.color = startcolor;
+            }
         }
 
         void DeleteChar()
@@ -217,21 +243,14 @@ namespace StoryGenerator
                 yield return enumerator.Current;
         }
 
-        IEnumerator waitForSceneLoad(int sceneNumber)
-        {
-            while (SceneManager.GetActiveScene().buildIndex != sceneNumber)
-            {
-                yield return null;
-            }
-        }
         IEnumerator ProcessInputRequest(int episode)
         {
             yield return null;
-            string episodePath = $"Episodes/Episode{episode}";
+            string episodePath = $"Episodes/pilot_task_id_{episode + 1}";
             TextAsset episodeFile = Resources.Load<TextAsset>(episodePath);
             Episode currentEpisode = JsonUtility.FromJson<Episode>(episodeFile.text);
             currentEpisode.ClearDataFile(episode);
-                
+
             sceneCameras = ScriptUtils.FindAllCameras(transform);
             numSceneCameras = sceneCameras.Count;
             cameras = sceneCameras.ToList();
@@ -241,9 +260,8 @@ namespace StoryGenerator
             OneTimeInitializer homeInitializer = new OneTimeInitializer();
             EnvironmentGraphCreator currentGraphCreator = null;
             EnvironmentGraph currentGraph = null;
-            Debug.Log("Initialize Rooms");
+            //int expandSceneCount = 0;
 
-            // EXPAND_SCENE
             InitRooms();
 
             //add one character by default
@@ -251,7 +269,7 @@ namespace StoryGenerator
             CharacterControl newchar;
             newchar = AddCharacter(configchar.character_resource, false, configchar.mode, configchar.character_position, configchar.initial_room);
 
-            Debug.Log("added Chars");
+
             characters.Add(newchar);
             CurrentStateList.Add(null);
             numCharacters++;
@@ -260,14 +278,19 @@ namespace StoryGenerator
             cameras.AddRange(charCameras);
             cameraInitializer.initialized = false;
 
-            Debug.Log("Graph update");
             if (currentGraph == null)
             {
                 currentGraphCreator = new EnvironmentGraphCreator(dataProviders);
                 currentGraph = currentGraphCreator.CreateGraph(transform);
             }
-
+            else
+            {
+                currentGraph = currentGraphCreator.UpdateGraph(transform);
+            }
             bool keyPressed = false;
+            bool leftExecuted = false;
+            bool rightExecuted = false;
+            bool click = false;
 
             ExecutionConfig config = new ExecutionConfig();
             IObjectSelectorProvider objectSelectorProvider = new InstanceSelectorProvider(currentGraph);
@@ -284,45 +307,41 @@ namespace StoryGenerator
             // Create canvas and event system
             GameObject newCanvas = new GameObject("Canvas");
             Canvas canv = newCanvas.AddComponent<Canvas>();
-            TextMeshProUGUI tasksUI = canv.gameObject.AddComponent<TextMeshProUGUI>();
-            List<string> goals = new List<string>();
-            tasksUI.fontSize = 18;
-            tasksUI.text = "Tasks: \n";
-            foreach (Task t in currentEpisode.task_goal) {
-                string action = t.action;
-                string obj = action.Split('{', '}')[1];
-                string verb = action.Split('_')[0];
-                tasksUI.text += $"{verb} {obj} \n";
-                goals.Add($"<char0> [{verb}] <{obj}>");
-            }
-
             canv.renderMode = RenderMode.ScreenSpaceOverlay;
             newCanvas.AddComponent<CanvasScaler>();
             newCanvas.AddComponent<GraphicRaycaster>();
             GameObject eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
 
+            TextMeshProUGUI tasksUI = canv.gameObject.AddComponent<TextMeshProUGUI>();
+            List<string> goals = new List<string>();
+            tasksUI.fontSize = 18;
+            tasksUI.text = currentEpisode.GenerateTasksAndGoals();
+
             AddButton("Open");
             AddButton("Grab");
+            AddButton("PutLeft");
+            AddButton("PutRight");
 
             GameObject goOpen = GameObject.Find("OpenButton");
             GameObject goGrab = GameObject.Find("GrabButton");
+            GameObject goPutLeft = GameObject.Find("PutLeftButton");
+            GameObject goPutRight = GameObject.Find("PutRightButton");
 
             goOpen.SetActive(false);
             goGrab.SetActive(false);
+            goPutLeft.SetActive(false);
+            goPutRight.SetActive(false);
 
-            Vector3 previousPos = new Vector3(0,0,0);
+            Vector3 previousPos = new Vector3(0, 0, 0);
 
-            //Boolean openableOrGrabbable = false;
-            //Boolean openedOrGrabbed = false;
             List<string> scriptLines = new List<string>();
-            //Script sequence for data recording (as scriptLines gets cleared)
-            List<string> scriptSequence = new List<string>();
             while (!episodeDone)
             {
+                bool taskCompleted = false;
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
                 {
                     string move = "<char0> [walkforward]";
-                    scriptSequence.Add(move);
+                    currentEpisode.AddAction(move);
                     scriptLines.Add(move);
                     Debug.Log("move forward");
                     keyPressed = true;
@@ -330,7 +349,7 @@ namespace StoryGenerator
                 else if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
                 {
                     string move = "<char0> [turnleft]";
-                    scriptSequence.Add(move);
+                    currentEpisode.AddAction(move);
                     scriptLines.Add(move);
                     Debug.Log("move left");
                     keyPressed = true;
@@ -338,16 +357,15 @@ namespace StoryGenerator
                 else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
                 {
                     string move = "<char0> [turnright]";
-                    scriptSequence.Add(move);
+                    currentEpisode.AddAction(move);
                     scriptLines.Add(move);
                     Debug.Log("move right");
                     keyPressed = true;
                 }
                 //TODO: add going backwards and clean up Input code
 
-                
-                
-                
+
+
                 if (Input.GetMouseButtonDown(0))
                 {
                     Debug.Log("mouse down");
@@ -358,6 +376,7 @@ namespace StoryGenerator
                     bool hit = Physics.Raycast(ray, out rayHit);
                     if (hit)
                     {
+                        click = true;
                         Transform t = rayHit.transform;
                         InstanceSelectorProvider objectInstanceSelectorProvider = (InstanceSelectorProvider)objectSelectorProvider;
 
@@ -372,7 +391,16 @@ namespace StoryGenerator
                         int objectId = obj.id;
                         Debug.Log("object name " + objectName);
 
+                        rend = t.GetComponent<Renderer>();
+
+                        //TODO: add Halo around objects, activating and disactivating
+                        /*GameObject haloPrefab = Resources.Load("Halo") as GameObject;
+                        GameObject halo = (GameObject)Instantiate(haloPrefab);
+                        halo.transform.SetParent(t, false);
+                        */
+
                         ICollection<string> objProperties = obj.properties;
+                        ISet<Utilities.ObjectState> objStates = obj.states;
 
                         // coordinate of click
                         Vector2 mousePos = new Vector2();
@@ -382,178 +410,248 @@ namespace StoryGenerator
                         Debug.Log("point " + point);
 
                         //TODO: grabbing/putting with right and left hands
-                        /*State currentState = this.CurrentStateList[0];
+                        State currentState = this.CurrentStateList[0];
                         GameObject rh = currentState.GetGameObject("RIGHT_HAND_OBJECT");
                         GameObject lh = currentState.GetGameObject("LEFT_HAND_OBJECT");
                         EnvironmentObject obj1;
                         EnvironmentObject obj2;
+                        EnvironmentObject obj3;
                         currentGraphCreator.objectNodeMap.TryGetValue(characters[0].gameObject, out obj1);
                         Character character_graph;
-                        currentGraphCreator.characters.TryGetValue(obj1, out character_graph);*/
+                        currentGraphCreator.characters.TryGetValue(obj1, out character_graph);
 
                         if (objProperties.Contains("CAN_OPEN") && !goOpen.activeSelf)
                         {
-                            
-                            Debug.Log("open");
-                            //AddButton("Open");
-
-                            //go = GameObject.Find("OpenButton");
-                            //go.tag = "Button";
-                            goOpen.GetComponentInChildren<TextMeshProUGUI>().text = "Open " + objectName;
-                            float width = goOpen.GetComponentInChildren<TextMeshProUGUI>().preferredWidth + 50;
-                            goOpen.SetActive(true);
-                            Button buttonOpen = goOpen.GetComponent<Button>();
-                            goOpen.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width/2, width);
-                            //openableOrGrabbable = true;
-
-                            buttonOpen.onClick.AddListener(() =>
+                            //TODO: fix highlight
+                            if (rend != null)
                             {
-                                Debug.Log("opened");
-                                string action = String.Format("<char0> [open] <{0}> ({1})", objectName, objectId);
-                                scriptSequence.Add($"<char0> [open] <{objectName}>");
-                                scriptLines.Add(action);
-                                //openedOrGrabbed = true;
-                                goOpen.SetActive(false);
-                                keyPressed = true;
-                                
-                                buttonOpen.onClick.RemoveAllListeners();
-                                //Destroy(button.gameObject);
-                            });
+                                startcolor = rend.material.color;
+                                Debug.Log("rend not null! " + rend.material.color);
+                                rend.material.color = Color.yellow;
+                            }
+
+                            if (objStates.Contains(Utilities.ObjectState.CLOSED))
+                            {
+                                Debug.Log("open");
+                                goOpen.GetComponentInChildren<TextMeshProUGUI>().text = "Open " + objectName;
+                                float width = goOpen.GetComponentInChildren<TextMeshProUGUI>().preferredWidth + 50;
+                                goOpen.SetActive(true);
+                                Button buttonOpen = goOpen.GetComponent<Button>();
+                                goOpen.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width / 2, width);
+
+                                buttonOpen.onClick.AddListener(() =>
+                                {
+                                    Debug.Log("opened");
+                                    objStates.Remove(Utilities.ObjectState.CLOSED);
+                                    objStates.Add(Utilities.ObjectState.OPEN);
+                                    string action = String.Format("<char0> [open] <{0}> ({1})", objectName, objectId);
+                                    currentEpisode.AddAction(action);
+                                    taskCompleted = currentEpisode.GoalMetSingleObj("open", objectName);
+                                    scriptLines.Add(action);
+                                    goOpen.SetActive(false);
+                                    keyPressed = true;
+
+                                    buttonOpen.onClick.RemoveAllListeners();
+                                });
+                            }
+                            else if (objStates.Contains(Utilities.ObjectState.OPEN))
+                            {
+                                Debug.Log("close");
+                                goOpen.GetComponentInChildren<TextMeshProUGUI>().text = "Close " + objectName;
+                                float width = goOpen.GetComponentInChildren<TextMeshProUGUI>().preferredWidth + 50;
+                                goOpen.SetActive(true);
+                                Button buttonOpen = goOpen.GetComponent<Button>();
+                                goOpen.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width / 2, width);
+
+                                buttonOpen.onClick.AddListener(() =>
+                                {
+                                    Debug.Log("closed");
+                                    objStates.Remove(Utilities.ObjectState.OPEN);
+                                    objStates.Add(Utilities.ObjectState.CLOSED);
+                                    string action = String.Format("<char0> [close] <{0}> ({1})", objectName, objectId);
+                                    currentEpisode.AddAction(action);
+                                    taskCompleted = currentEpisode.GoalMetSingleObj("open", objectName);
+                                    scriptLines.Add(action);
+                                    goOpen.SetActive(false);
+                                    keyPressed = true;
+
+                                    buttonOpen.onClick.RemoveAllListeners();
+                                });
+                            }
+
+
                         }
                         else if (objProperties.Contains("GRABBABLE") && !goGrab.activeSelf)
                         {
                             Debug.Log("grab");
-                            //AddButton("Grab");
 
-                            //go = GameObject.Find("GrabButton");
-                            //go.tag = "Button";
+                            //TODO: fix highlight
+                            if (rend != null)
+                            {
+                                startcolor = rend.material.color;
+                                Debug.Log("rend not null! " + rend.material.color);
+                                rend.material.color = Color.yellow;
+                            }
+
                             goGrab.GetComponentInChildren<TextMeshProUGUI>().text = "Grab " + objectName;
                             float width = goGrab.GetComponentInChildren<TextMeshProUGUI>().preferredWidth + 50;
                             goGrab.SetActive(true);
                             Button buttonGrab = goGrab.GetComponent<Button>();
-                            goGrab.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width/2, width);
-                            //openableOrGrabbable = true;
+                            goGrab.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width / 2, width);
 
                             buttonGrab.onClick.AddListener(() =>
                             {
                                 Debug.Log("grabbed");
                                 string action = String.Format("<char0> [grab] <{0}> ({1})", objectName, objectId);
-                                scriptSequence.Add($"<char0> [grab] <{objectName}>");
+                                currentEpisode.AddAction(action);
+                                taskCompleted = currentEpisode.GoalMetSingleObj("grab", objectName);
                                 Debug.Log(action);
                                 scriptLines.Add(action);
-                                //openedOrGrabbed = true;
                                 goGrab.SetActive(false);
                                 keyPressed = true;
 
                                 buttonGrab.onClick.RemoveAllListeners();
-                                //Destroy(button.gameObject);
                             });
                         }
 
+                        else if (objProperties.Contains("SURFACES") && (rh != null || lh != null) && (!goPutLeft.activeSelf || !goPutRight.activeSelf))
+                        {
+                            Debug.Log("put");
 
-                        //TODO: put, close
+                            if (lh != null)
+                            {
+                                currentGraphCreator.objectNodeMap.TryGetValue(lh, out obj2);
+                                Debug.Log("Put " + obj2.class_name + " on " + objectName);
+                                goPutLeft.GetComponentInChildren<TextMeshProUGUI>().text = "Put " + obj2.class_name + " on " + objectName;
+                                float width = goPutLeft.GetComponentInChildren<TextMeshProUGUI>().preferredWidth + 50;
+                                goPutLeft.SetActive(true);
+
+                                Button buttonPutLeft = goPutLeft.GetComponent<Button>();
+                                goPutLeft.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width / 2, width);
+                                goPutLeft.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Bottom, mousePos.y + 60, 80);
+
+                                buttonPutLeft.onClick.AddListener(() => {
+                                    Debug.Log("put left");
+                                    string action = String.Format("<char0> [put] <{2}> ({3}) <{0}> ({1})", objectName, objectId, obj2.class_name, obj2.id);
+                                    currentEpisode.AddAction(action);
+                                    taskCompleted = currentEpisode.GoalMet("grab", obj2.class_name, objectName);
+                                    Debug.Log(action);
+                                    scriptLines.Add(action);
+                                    leftExecuted = true;
+                                    goPutLeft.SetActive(false);
+                                    keyPressed = true;
+
+                                    buttonPutLeft.onClick.RemoveAllListeners();
+                                });
+                            }
+                            if (rh != null)
+                            {
+                                currentGraphCreator.objectNodeMap.TryGetValue(rh, out obj3);
+                                Debug.Log("Put " + obj3.class_name + " on " + objectName);
+                                goPutRight.GetComponentInChildren<TextMeshProUGUI>().text = "Put " + obj3.class_name + " on " + objectName;
+                                float width = goPutRight.GetComponentInChildren<TextMeshProUGUI>().preferredWidth + 50;
+                                goPutRight.SetActive(true);
+                                Button buttonPutRight = goPutRight.GetComponent<Button>();
+
+                                goPutRight.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, mousePos.x - width / 2, width);
+                                goPutRight.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Bottom, mousePos.y - 60, 80);
+                                //TODO: are these buttons in the right location?
+
+                                buttonPutRight.onClick.AddListener(() => { 
+                                    Debug.Log("put right");
+                                    string action = String.Format("<char0> [put] <{2}> ({3}) <{0}> ({1})", objectName, objectId, obj3.class_name, obj3.id);
+                                    Debug.Log(action);
+                                    currentEpisode.AddAction(action);
+                                    taskCompleted = currentEpisode.GoalMet("grab", obj3.class_name, objectName);
+                                    scriptLines.Add(action);
+                                    rightExecuted = true;
+                                    goPutRight.SetActive(false);
+                                    keyPressed = true;
+
+                                    buttonPutRight.onClick.RemoveAllListeners();
+                                });
+
+                            }
+
+                        }
 
                     }
                 }
-                
-                /*if (openableOrGrabbable)
+
+                if (newchar.transform.position != previousPos)
                 {
-                    foreach (GameObject gameObj in GameObject.FindGameObjectsWithTag("Button"))
-                    {
-                        Destroy(gameObj);
-                    }
-                    //Destroy(button.gameObject);
-                }*/
-                // Record Position
-                if (newchar.transform.position != previousPos) {
                     currentEpisode.AddCoord(newchar.transform.position);
                 }
                 previousPos = newchar.transform.position;
 
-                // Check if Task Completed
-                for (int i = 0; i < scriptSequence.Count; i++) {
-                    if (goals.Contains(scriptSequence[i])) 
+                if (taskCompleted)
+                {
+                    tasksUI.text = currentEpisode.UpdateTasksString();
+                    if (currentEpisode.IsCompleted)
                     {
-                        goals.Remove(scriptSequence[i]);
-                        tasksUI.text = "Tasks: \n";
-                        foreach (string goal in goals) {
-                            string[] g = goal.Split(' ');
-                            Debug.Log(g[1]);
-                            Debug.Log(g[2]);
-                            string obj = g[2].Split('<', '>')[1];
-                            string verb = g[1].Split('[', ']')[1];
-                            tasksUI.text += $"{verb} {obj} \n";
-                        }
+                        currentEpisode.RecordData(episode);
+                        episodeDone = true;
+                        episodeNum++;
                     }
                 }
-                if (goals.Count == 0) {
-                    currentEpisode.RecordData(episode);
-                    episodeDone = true;
-                    episodeNum++;
-                }
+
                 if (keyPressed)
                 {
-                    Debug.Log("key pressed");
-                    goOpen.SetActive(false);
-                    goGrab.SetActive(false);
+                    //un-highlight
+                    if (rend != null)
+                    {
+                        rend.material.color = startcolor;
+                        rend = null;
+                    }
+
                     sExecutors[0].ClearScript();
                     Debug.Log("Scriptlines " + scriptLines[0]);
                     Debug.Log("Scriptlines count " + scriptLines.Count);
                     ScriptReader.ParseScript(sExecutors, scriptLines, dataProviders.ActionEquivalenceProvider);
                     StartCoroutine(sExecutors[0].ProcessAndExecute(false, this));
-                    
+
                     scriptLines.Clear();
+                    Debug.Log("key pressed");
+                    goOpen.SetActive(false);
+                    goGrab.SetActive(false);
+
+                    if (leftExecuted)
+                    {
+                        goPutLeft.SetActive(false);
+                        leftExecuted = false;
+                    }
+                    if (rightExecuted)
+                    {
+                        goPutRight.SetActive(false);
+                        rightExecuted = false;
+                    }
+
+
+
                     keyPressed = false;
+                    click = false;
                     Debug.Log("action executed");
-                    /*if (openableOrGrabbable)
-                    {
-                        try
-                        {
-                            foreach (GameObject gameObj in GameObject.FindGameObjectsWithTag("Button"))
-                            {
-                                Destroy(gameObj);
-                            }
-                        }
-                        catch
-                        {
 
-                        }
-                        openableOrGrabbable = false;
-                    }*/
-                    
-                    
-                    //go.SetActive(false);
-                    //Debug.Log("destroyed");
-                    //Destroy(go);
-                    /*
-                    if (openedOrGrabbed)
-                    {
-                        Debug.Log("destroyed");
-                        Destroy(go);
-
-                    }*/
                 }
-                //Write some text to the correct data file
-                currentEpisode.AddAction(scriptSequence);
-                scriptSequence.Clear();
+                Debug.Log("done");
+                EpisodeNumber.episodeNum++;
+                string nextEpisodePath = $"Episodes/Episode{episode + 1}";
+                TextAsset nextEpisodeFile = Resources.Load<TextAsset>(nextEpisodePath);
+                Episode nextEpisode = JsonUtility.FromJson<Episode>(nextEpisodeFile.text);
+                nextEpisode.ClearDataFile(episode + 1);
+                int nextSceneIndex = nextEpisode.env_id;
+                if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings
+                    && SceneManager.GetActiveScene().buildIndex != nextSceneIndex)
+                {
+                    Debug.Log($"loading episode: {nextSceneIndex}");
+                    SceneManager.LoadScene(nextSceneIndex);
+                    yield break;
+                }
+                Debug.Log($"Scene Loaded {SceneManager.GetActiveScene().buildIndex}");
                 yield return null;
+
             }
-            Debug.Log("done");
-            EpisodeNumber.episodeNum++;
-            string nextEpisodePath = $"Episodes/Episode{episode + 1}";
-            TextAsset nextEpisodeFile = Resources.Load<TextAsset>(nextEpisodePath);
-            Episode nextEpisode = JsonUtility.FromJson<Episode>(nextEpisodeFile.text);
-            nextEpisode.ClearDataFile(episode + 1);
-            int nextSceneIndex = nextEpisode.env_id;
-            if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings 
-                && SceneManager.GetActiveScene().buildIndex != nextSceneIndex)
-            {
-                Debug.Log($"loading episode: {nextSceneIndex}");
-                SceneManager.LoadScene(nextSceneIndex);
-                yield break;
-            }
-            Debug.Log($"Scene Loaded {SceneManager.GetActiveScene().buildIndex}");
-            yield return null;
+
         }
 
         // TODO: move this to utils
@@ -572,6 +670,7 @@ namespace StoryGenerator
             curr_button.GetComponent<RectTransform>().SetParent(panel.transform);
             curr_button.GetComponent<RectTransform>().SetInsetAndSizeFromParentEdge(RectTransform.Edge.Left, 0, 100);
             curr_button.layer = 5;
+
         }
         IEnumerator ProcessNetworkRequest()
         {
@@ -1976,7 +2075,6 @@ namespace StoryGenerator
             return result;
         }
     }
-
     [System.Serializable]
     public class Episode
     {
@@ -1987,7 +2085,9 @@ namespace StoryGenerator
         public int level;
         public string[] init_rooms;
         public Task[] task_goal;
-        public int[] graph;
+        public EnvironmentGraph graph;
+        public List<Goal> goals = new List<Goal>();
+        public bool IsCompleted = false;
 
         private List<Vector3> positions = new List<Vector3>();
 
@@ -1998,21 +2098,24 @@ namespace StoryGenerator
         public void ClearDataFile(int episode)
         {
             string outputPath = $"Assets/Resources/Episodes/Episode{episode}Data.txt";
-             using (FileStream fs = File.Create(outputPath)){}
+            using (FileStream fs = File.Create(outputPath)) { }
         }
 
-        public void RecordData(int episode) 
+        public void RecordData(int episode)
         {
             HashSet<Vector3> seen = new HashSet<Vector3>();
             string outputPath = $"Assets/Resources/Episodes/Episode{episode}Data.txt";
             StreamWriter outputFile = new StreamWriter(outputPath, true);
-            foreach (Vector3 pos in positions) {
-                if (!seen.Contains(pos)) {
+            foreach (Vector3 pos in positions)
+            {
+                if (!seen.Contains(pos))
+                {
                     outputFile.WriteLine(pos.ToString());
                     seen.Add(pos);
                 }
             }
-            foreach (string action in scriptActions) {
+            foreach (string action in scriptActions)
+            {
                 outputFile.WriteLine(action);
             }
             outputFile.Close();
@@ -2023,16 +2126,106 @@ namespace StoryGenerator
             positions.Add(coord);
         }
 
-        public void AddAction(List<string> actions)
+        public void AddAction(string a)
         {
-            scriptActions.AddRange(actions);
+            scriptActions.Add(a);
         }
+
+        public string GenerateTasksAndGoals()
+        {
+            string response = "Tasks: \n";
+            foreach (Task t in task_goal)
+            {
+                string action = t.task;
+                string obj1 = action.Split('{', '}')[1];
+                string obj2 = action.Split('{', '}')[3];
+                string verb = action.Split('_')[0];
+                response += $"{verb} {obj1} on {obj2} x{t.repititions}\n";
+                Goal newG = new Goal(verb, obj1, obj2, t.repititions);
+                goals.Add(newG);
+            }
+            return response;
+        }
+
+        public bool GoalMet(string v, string o1, string o2)
+        {
+            int reps = 0;
+            foreach (Goal g in goals)
+            {
+                if (g.repititions >= 1)
+                {
+                    reps += g.repititions;
+                    if (g.verb == v && g.obj1 == o1 && g.obj2 == o2)
+                    {
+                        g.repititions--;
+                        return true;
+                    }
+                }
+            }
+            if (reps == 0)
+            {
+                IsCompleted = true;
+            }
+            return false;
+        }
+
+        public bool GoalMetSingleObj(string v, string o)
+        {
+            int reps = 0;
+            foreach (Goal g in goals)
+            {
+                if (g.repititions >= 1)
+                {
+                    reps += g.repititions;
+                    if (g.verb == v && g.obj1 == o)
+                    {
+                        g.repititions--;
+                        return true;
+                    }
+                }
+            }
+            if (reps == 0)
+            {
+                IsCompleted = true;
+            }
+            return false;
+        }
+
+        public string UpdateTasksString()
+        {
+            string response = "Tasks: \n";
+            foreach (Goal g in goals)
+            {
+                if (g.repititions > 0)
+                {
+                    response += $"{g.verb} {g.obj1} on {g.obj2} x{g.repititions}\n";
+                }
+            }
+            return response;
+        }
+
     }
     [System.Serializable]
     public class Task
     {
-        public string action;
+        public string task;
         public int repititions;
     }
 
+    public class Goal
+    {
+        public string verb { get; set; }
+        public string obj1 { get; set; }
+        public string obj2 { get; set; }
+        public int repititions { get; set; }
+
+        public Goal(string v, string o1, string o2, int reps)
+        {
+            verb = v;
+            obj1 = o1;
+            obj2 = o2;
+            repititions = reps;
+        }
+    }
 }
+
