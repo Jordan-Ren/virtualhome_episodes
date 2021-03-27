@@ -333,15 +333,14 @@ namespace StoryGenerator
             goPutLeft.SetActive(false);
             goPutRight.SetActive(false);
 
-            Vector3 previousPos = new Vector3(0, 0, 0);
-
             List<string> scriptLines = new List<string>();
             while (!episodeDone)
             {
+                float currTime = Time.time;
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
                 {
                     string move = "<char0> [walkforward]";
-                    currentEpisode.AddAction(move);
+                    currentEpisode.AddAction(move, currTime);
                     scriptLines.Add(move);
                     Debug.Log("move forward");
                     keyPressed = true;
@@ -349,7 +348,7 @@ namespace StoryGenerator
                 else if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
                 {
                     string move = "<char0> [turnleft]";
-                    currentEpisode.AddAction(move);
+                    currentEpisode.AddAction(move, currTime);
                     scriptLines.Add(move);
                     Debug.Log("move left");
                     keyPressed = true;
@@ -357,7 +356,7 @@ namespace StoryGenerator
                 else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
                 {
                     string move = "<char0> [turnright]";
-                    currentEpisode.AddAction(move);
+                    currentEpisode.AddAction(move, currTime);
                     scriptLines.Add(move);
                     Debug.Log("move right");
                     keyPressed = true;
@@ -445,7 +444,7 @@ namespace StoryGenerator
                                     objStates.Remove(Utilities.ObjectState.CLOSED);
                                     objStates.Add(Utilities.ObjectState.OPEN);
                                     string action = String.Format("<char0> [open] <{0}> ({1})", objectName, objectId);
-                                    currentEpisode.AddAction(action);
+                                    currentEpisode.AddAction(action, currTime);
                                     currentEpisode.GoalMetSingleObj("open", objectName);
                                     tasksUI.text = currentEpisode.UpdateTasksString();
                                     scriptLines.Add(action);
@@ -470,7 +469,7 @@ namespace StoryGenerator
                                     objStates.Remove(Utilities.ObjectState.OPEN);
                                     objStates.Add(Utilities.ObjectState.CLOSED);
                                     string action = String.Format("<char0> [close] <{0}> ({1})", objectName, objectId);
-                                    currentEpisode.AddAction(action);
+                                    currentEpisode.AddAction(action, currTime);
                                     currentEpisode.GoalMetSingleObj("close", objectName);
                                     tasksUI.text = currentEpisode.UpdateTasksString();
                                     scriptLines.Add(action);
@@ -505,7 +504,7 @@ namespace StoryGenerator
                             {
                                 Debug.Log("grabbed");
                                 string action = String.Format("<char0> [grab] <{0}> ({1})", objectName, objectId);
-                                currentEpisode.AddAction(action);
+                                currentEpisode.AddAction(action, currTime);
                                 currentEpisode.GoalMetSingleObj("grab", objectName);
                                 tasksUI.text = currentEpisode.UpdateTasksString();
                                 Debug.Log(action);
@@ -536,7 +535,7 @@ namespace StoryGenerator
                                 buttonPutLeft.onClick.AddListener(() => {
                                     Debug.Log("put left");
                                     string action = String.Format("<char0> [put] <{2}> ({3}) <{0}> ({1})", objectName, objectId, obj2.class_name, obj2.id);
-                                    currentEpisode.AddAction(action);
+                                    currentEpisode.AddAction(action, currTime);
                                     currentEpisode.GoalMet("put", obj2.class_name, objectName);
                                     tasksUI.text = currentEpisode.UpdateTasksString();
                                     Debug.Log(action);
@@ -565,7 +564,7 @@ namespace StoryGenerator
                                     Debug.Log("put right");
                                     string action = String.Format("<char0> [put] <{2}> ({3}) <{0}> ({1})", objectName, objectId, obj3.class_name, obj3.id);
                                     Debug.Log(action);
-                                    currentEpisode.AddAction(action);
+                                    currentEpisode.AddAction(action, currTime);
                                     currentEpisode.GoalMet("put", obj3.class_name, objectName);
                                     tasksUI.text = currentEpisode.UpdateTasksString();
                                     scriptLines.Add(action);
@@ -583,13 +582,13 @@ namespace StoryGenerator
                     }
                 }
 
-                if (newchar.transform.position != previousPos)
+                if (newchar.transform.position != currentEpisode.previousPos || newchar.transform.eulerAngles != currentEpisode.previousRotation)
                 {
-                    currentEpisode.AddCoord(newchar.transform.position);
+                    currentEpisode.AddCharInfo(newchar.transform.position, newchar.transform.eulerAngles, Time.time);
                 }
-                previousPos = newchar.transform.position;
+                currentEpisode.previousPos = newchar.transform.position;
+                currentEpisode.previousRotation = newchar.transform.eulerAngles;
 
-                tasksUI.text = currentEpisode.UpdateTasksString();
                 if (currentEpisode.IsCompleted)
                 {
                     currentEpisode.RecordData(episode);
@@ -634,27 +633,25 @@ namespace StoryGenerator
                     keyPressed = false;
                     click = false;
                     Debug.Log("action executed");
-
                 }
-                Debug.Log("done");
-                EpisodeNumber.episodeNum++;
-                string nextEpisodePath = $"Episodes/Episode{episode + 1}";
-                TextAsset nextEpisodeFile = Resources.Load<TextAsset>(nextEpisodePath);
-                Episode nextEpisode = JsonUtility.FromJson<Episode>(nextEpisodeFile.text);
-                nextEpisode.ClearDataFile(episode + 1);
-                int nextSceneIndex = nextEpisode.env_id;
-                if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings
-                    && SceneManager.GetActiveScene().buildIndex != nextSceneIndex)
-                {
-                    Debug.Log($"loading episode: {nextSceneIndex}");
-                    SceneManager.LoadScene(nextSceneIndex);
-                    yield break;
-                }
-                Debug.Log($"Scene Loaded {SceneManager.GetActiveScene().buildIndex}");
                 yield return null;
-
             }
-
+            Debug.Log("done");
+            EpisodeNumber.episodeNum++;
+            string nextEpisodePath = $"Episodes/Episode{episode + 1}";
+            TextAsset nextEpisodeFile = Resources.Load<TextAsset>(nextEpisodePath);
+            Episode nextEpisode = JsonUtility.FromJson<Episode>(nextEpisodeFile.text);
+            nextEpisode.ClearDataFile(episode + 1);
+            int nextSceneIndex = nextEpisode.env_id;
+            if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings
+                && SceneManager.GetActiveScene().buildIndex != nextSceneIndex)
+            {
+                Debug.Log($"loading episode: {nextSceneIndex}");
+                SceneManager.LoadScene(nextSceneIndex);
+                yield break;
+            }
+            Debug.Log($"Scene Loaded {SceneManager.GetActiveScene().buildIndex}");
+            yield return null;
         }
 
         // TODO: move this to utils
@@ -2092,11 +2089,12 @@ namespace StoryGenerator
         public List<Goal> goals = new List<Goal>();
         public bool IsCompleted = false;
 
-        private List<Vector3> positions = new List<Vector3>();
+        private List<(Vector3, Vector3, float)> posAndRotation = new List<(Vector3, Vector3, float)>();
 
-        private List<string> scriptActions = new List<string>();
+        private List<(string, float)> scriptActions = new List<(string, float)>();
 
         public Vector3 previousPos = new Vector3(0, 0, 0);
+        public Vector3 previousRotation = new Vector3(0, 0, 0);
 
         public void ClearDataFile(int episode)
         {
@@ -2106,32 +2104,27 @@ namespace StoryGenerator
 
         public void RecordData(int episode)
         {
-            HashSet<Vector3> seen = new HashSet<Vector3>();
             string outputPath = $"Assets/Resources/Episodes/Episode{episode}Data.txt";
             StreamWriter outputFile = new StreamWriter(outputPath, true);
-            foreach (Vector3 pos in positions)
+            foreach ((Vector3, Vector3, float) pos in posAndRotation)
             {
-                if (!seen.Contains(pos))
-                {
-                    outputFile.WriteLine(pos.ToString());
-                    seen.Add(pos);
-                }
+                outputFile.WriteLine(pos.ToString());
             }
-            foreach (string action in scriptActions)
+            foreach ((string, float) action in scriptActions)
             {
                 outputFile.WriteLine(action);
             }
             outputFile.Close();
         }
 
-        public void AddCoord(Vector3 coord)
+        public void AddCharInfo(Vector3 coord, Vector3 rot, float t)
         {
-            positions.Add(coord);
+            posAndRotation.Add((coord, rot, t));
         }
 
-        public void AddAction(string a)
+        public void AddAction(string a, float t)
         {
-            scriptActions.Add(a);
+            scriptActions.Add((a, t));
         }
 
         public string GenerateTasksAndGoals()
@@ -2150,48 +2143,44 @@ namespace StoryGenerator
             return response;
         }
 
-        public bool GoalMet(string v, string o1, string o2)
+        public void GoalMet(string v, string o1, string o2)
         {
             int reps = 0;
             foreach (Goal g in goals)
             {
                 if (g.repetitions >= 1)
                 {
-                    reps += g.repetitions;
                     if (g.verb == v && g.obj1 == o1 && g.obj2 == o2)
                     {
                         g.repetitions--;
-                        return true;
                     }
+                    reps += g.repetitions;
                 }
             }
             if (reps == 0)
             {
                 IsCompleted = true;
             }
-            return false;
         }
 
-        public bool GoalMetSingleObj(string v, string o)
+        public void GoalMetSingleObj(string v, string o)
         {
             int reps = 0;
             foreach (Goal g in goals)
             {
                 if (g.repetitions >= 1)
                 {
-                    reps += g.repetitions;
                     if (g.verb == v && g.obj1 == o)
                     {
                         g.repetitions--;
-                        return true;
                     }
+                    reps += g.repetitions;
                 }
             }
             if (reps == 0)
             {
                 IsCompleted = true;
             }
-            return false;
         }
 
         public string UpdateTasksString()
