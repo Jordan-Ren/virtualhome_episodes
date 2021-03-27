@@ -134,7 +134,7 @@ namespace StoryGenerator
                 EpisodeNumber.episodeNum = 0;
                 episodeNum = EpisodeNumber.episodeNum;
                 Debug.Log($"init episode number {episodeNum}");
-                // Load correct scene
+                // Load correct scene (episodeNum is just for testing rn)
 
                 SceneManager.LoadScene(episodeNum);
                 yield return null;
@@ -314,7 +314,8 @@ namespace StoryGenerator
 
             TextMeshProUGUI tasksUI = canv.gameObject.AddComponent<TextMeshProUGUI>();
             List<string> goals = new List<string>();
-            tasksUI.fontSize = 18;
+            tasksUI.fontSize = 12;
+            tasksUI.margin = new Vector4(65, 50, 0, 0);
             tasksUI.text = currentEpisode.GenerateTasksAndGoals();
 
             AddButton("Open");
@@ -337,7 +338,6 @@ namespace StoryGenerator
             List<string> scriptLines = new List<string>();
             while (!episodeDone)
             {
-                bool taskCompleted = false;
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
                 {
                     string move = "<char0> [walkforward]";
@@ -446,7 +446,8 @@ namespace StoryGenerator
                                     objStates.Add(Utilities.ObjectState.OPEN);
                                     string action = String.Format("<char0> [open] <{0}> ({1})", objectName, objectId);
                                     currentEpisode.AddAction(action);
-                                    taskCompleted = currentEpisode.GoalMetSingleObj("open", objectName);
+                                    currentEpisode.GoalMetSingleObj("open", objectName);
+                                    tasksUI.text = currentEpisode.UpdateTasksString();
                                     scriptLines.Add(action);
                                     goOpen.SetActive(false);
                                     keyPressed = true;
@@ -470,7 +471,8 @@ namespace StoryGenerator
                                     objStates.Add(Utilities.ObjectState.CLOSED);
                                     string action = String.Format("<char0> [close] <{0}> ({1})", objectName, objectId);
                                     currentEpisode.AddAction(action);
-                                    taskCompleted = currentEpisode.GoalMetSingleObj("open", objectName);
+                                    currentEpisode.GoalMetSingleObj("close", objectName);
+                                    tasksUI.text = currentEpisode.UpdateTasksString();
                                     scriptLines.Add(action);
                                     goOpen.SetActive(false);
                                     keyPressed = true;
@@ -504,7 +506,8 @@ namespace StoryGenerator
                                 Debug.Log("grabbed");
                                 string action = String.Format("<char0> [grab] <{0}> ({1})", objectName, objectId);
                                 currentEpisode.AddAction(action);
-                                taskCompleted = currentEpisode.GoalMetSingleObj("grab", objectName);
+                                currentEpisode.GoalMetSingleObj("grab", objectName);
+                                tasksUI.text = currentEpisode.UpdateTasksString();
                                 Debug.Log(action);
                                 scriptLines.Add(action);
                                 goGrab.SetActive(false);
@@ -534,7 +537,8 @@ namespace StoryGenerator
                                     Debug.Log("put left");
                                     string action = String.Format("<char0> [put] <{2}> ({3}) <{0}> ({1})", objectName, objectId, obj2.class_name, obj2.id);
                                     currentEpisode.AddAction(action);
-                                    taskCompleted = currentEpisode.GoalMet("grab", obj2.class_name, objectName);
+                                    currentEpisode.GoalMet("put", obj2.class_name, objectName);
+                                    tasksUI.text = currentEpisode.UpdateTasksString();
                                     Debug.Log(action);
                                     scriptLines.Add(action);
                                     leftExecuted = true;
@@ -562,7 +566,8 @@ namespace StoryGenerator
                                     string action = String.Format("<char0> [put] <{2}> ({3}) <{0}> ({1})", objectName, objectId, obj3.class_name, obj3.id);
                                     Debug.Log(action);
                                     currentEpisode.AddAction(action);
-                                    taskCompleted = currentEpisode.GoalMet("grab", obj3.class_name, objectName);
+                                    currentEpisode.GoalMet("put", obj3.class_name, objectName);
+                                    tasksUI.text = currentEpisode.UpdateTasksString();
                                     scriptLines.Add(action);
                                     rightExecuted = true;
                                     goPutRight.SetActive(false);
@@ -584,16 +589,14 @@ namespace StoryGenerator
                 }
                 previousPos = newchar.transform.position;
 
-                if (taskCompleted)
+                tasksUI.text = currentEpisode.UpdateTasksString();
+                if (currentEpisode.IsCompleted)
                 {
-                    tasksUI.text = currentEpisode.UpdateTasksString();
-                    if (currentEpisode.IsCompleted)
-                    {
-                        currentEpisode.RecordData(episode);
-                        episodeDone = true;
-                        episodeNum++;
-                    }
+                    currentEpisode.RecordData(episode);
+                    episodeDone = true;
+                    episodeNum++;
                 }
+                
 
                 if (keyPressed)
                 {
@@ -2140,8 +2143,8 @@ namespace StoryGenerator
                 string obj1 = action.Split('{', '}')[1];
                 string obj2 = action.Split('{', '}')[3];
                 string verb = action.Split('_')[0];
-                response += $"{verb} {obj1} on {obj2} x{t.repititions}\n";
-                Goal newG = new Goal(verb, obj1, obj2, t.repititions);
+                response += $"{verb} {obj1} on {obj2} x{t.repetitions}\n";
+                Goal newG = new Goal(verb, obj1, obj2, t.repetitions);
                 goals.Add(newG);
             }
             return response;
@@ -2152,12 +2155,12 @@ namespace StoryGenerator
             int reps = 0;
             foreach (Goal g in goals)
             {
-                if (g.repititions >= 1)
+                if (g.repetitions >= 1)
                 {
-                    reps += g.repititions;
+                    reps += g.repetitions;
                     if (g.verb == v && g.obj1 == o1 && g.obj2 == o2)
                     {
-                        g.repititions--;
+                        g.repetitions--;
                         return true;
                     }
                 }
@@ -2174,12 +2177,12 @@ namespace StoryGenerator
             int reps = 0;
             foreach (Goal g in goals)
             {
-                if (g.repititions >= 1)
+                if (g.repetitions >= 1)
                 {
-                    reps += g.repititions;
+                    reps += g.repetitions;
                     if (g.verb == v && g.obj1 == o)
                     {
-                        g.repititions--;
+                        g.repetitions--;
                         return true;
                     }
                 }
@@ -2196,9 +2199,9 @@ namespace StoryGenerator
             string response = "Tasks: \n";
             foreach (Goal g in goals)
             {
-                if (g.repititions > 0)
+                if (g.repetitions > 0)
                 {
-                    response += $"{g.verb} {g.obj1} on {g.obj2} x{g.repititions}\n";
+                    response += $"{g.verb} {g.obj1} on {g.obj2} x{g.repetitions}\n";
                 }
             }
             return response;
@@ -2209,7 +2212,7 @@ namespace StoryGenerator
     public class Task
     {
         public string task;
-        public int repititions;
+        public int repetitions;
     }
 
     public class Goal
@@ -2217,14 +2220,14 @@ namespace StoryGenerator
         public string verb { get; set; }
         public string obj1 { get; set; }
         public string obj2 { get; set; }
-        public int repititions { get; set; }
+        public int repetitions { get; set; }
 
         public Goal(string v, string o1, string o2, int reps)
         {
             verb = v;
             obj1 = o1;
             obj2 = o2;
-            repititions = reps;
+            repetitions = reps;
         }
     }
 }
