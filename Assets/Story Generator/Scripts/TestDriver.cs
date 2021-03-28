@@ -262,13 +262,82 @@ namespace StoryGenerator
             InitRooms();
 
             cameraInitializer.initialized = false;
-
+            int expandSceneCount = 0;
             if (currentGraph == null)
             {
                 currentGraphCreator = new EnvironmentGraphCreator(dataProviders);
                 currentGraph = currentGraphCreator.CreateGraph(transform);
             }
-                
+
+            //EXPAND SCENE
+            cameraInitializer.initialized = false;
+            List<IEnumerator> animationEnumerators = new List<IEnumerator>();
+
+            try
+            {
+                if (currentGraph == null)
+                {
+                    currentGraphCreator = new EnvironmentGraphCreator(dataProviders);
+                    currentGraph = currentGraphCreator.CreateGraph(transform);
+                }
+
+                ExpanderConfig graph_config = new ExpanderConfig();
+                Debug.Log("Successfully de-serialized object");
+                EnvironmentGraph graph = currentEpisode.init_graph;
+                Debug.Log("got graph");
+
+
+                if (graph_config.randomize_execution)
+                {
+                    InitRandom(graph_config.random_seed);
+                }
+
+                // Maybe we do not need this
+                if (graph_config.animate_character)
+                {
+                    foreach (CharacterControl c in characters)
+                    {
+                        c.GetComponent<Animator>().speed = 1;
+                    }
+                }
+
+                SceneExpander graphExpander = new SceneExpander(dataProviders)
+                {
+                    Randomize = graph_config.randomize_execution,
+                    IgnoreObstacles = graph_config.ignore_obstacles,
+                    AnimateCharacter = graph_config.animate_character,
+                    TransferTransform = graph_config.transfer_transform
+                };
+                Debug.Log("got past new graph expander");
+
+                // TODO: set this with a flag
+                bool exact_expand = false;
+                graphExpander.ExpandScene(transform, graph, currentGraph, expandSceneCount, exact_expand);
+
+                Debug.Log("expanded scene");
+
+                SceneExpanderResult result = graphExpander.GetResult();
+
+                // TODO: Do we need this?
+                //currentGraphCreator.SetGraph(graph);
+                currentGraph = currentGraphCreator.UpdateGraph(transform);
+                animationEnumerators.AddRange(result.enumerators);
+                expandSceneCount++;
+            } catch (Exception e)
+            {
+                Debug.Log("OOPS no work");
+                Debug.Log(e);
+            }
+
+            foreach (IEnumerator e in animationEnumerators)
+            {
+                yield return e;
+            }
+            foreach (CharacterControl c in characters)
+            {
+                c.GetComponent<Animator>().speed = 0;
+            }
+
             //add one character by default
             CharacterConfig configchar = new CharacterConfig();//JsonConvert.DeserializeObject<CharacterConfig>(networkRequest.stringParams[0]);
             CharacterControl newchar;
@@ -2078,7 +2147,7 @@ namespace StoryGenerator
         public int level;
         public string[] init_rooms;
         public Task[] task_goal;
-        public EnvironmentGraph graph;
+        public EnvironmentGraph init_graph;
         public List<Goal> goals = new List<Goal>();
         public bool IsCompleted = false;
 
