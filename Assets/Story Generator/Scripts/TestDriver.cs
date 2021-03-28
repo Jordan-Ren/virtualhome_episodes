@@ -125,25 +125,22 @@ namespace StoryGenerator
             {
                 commServer.UnlockProcessing(); // Allow to proceed with requests
             }
-            //StartCoroutine(ProcessNetworkRequest());
-            Debug.Log("start");
-            StartCoroutine(ProcessInputRequest(0));
-            /*
-            //StartCoroutine(ProcessNetworkRequest());
+
             if (EpisodeNumber.episodeNum == -1) {
-                EpisodeNumber.episodeNum = 0;
+                EpisodeNumber.episodeNum = 1;
                 episodeNum = EpisodeNumber.episodeNum;
                 Debug.Log($"init episode number {episodeNum}");
                 // Load correct scene (episodeNum is just for testing rn)
-
-                SceneManager.LoadScene(episodeNum);
+                string episodePath = $"Episodes/pilot_task_id_{episodeNum + 1}";
+                TextAsset episodeFile = Resources.Load<TextAsset>(episodePath);
+                Episode currentEpisode = JsonUtility.FromJson<Episode>(episodeFile.text);
+                SceneManager.LoadScene(currentEpisode.env_id);
                 yield return null;
             } else {
                 Debug.Log($"next episode number {EpisodeNumber.episodeNum}");
                 episodeNum = EpisodeNumber.episodeNum;
                 StartCoroutine(ProcessInputRequest(episodeNum));
             }
-            */
         }
 
         private void InitServer()
@@ -246,7 +243,7 @@ namespace StoryGenerator
         IEnumerator ProcessInputRequest(int episode)
         {
             yield return null;
-            string episodePath = $"Episodes/pilot_task_id_{episode + 1}";
+            string episodePath = $"Episodes/pilot_task_id_{episode}";
             TextAsset episodeFile = Resources.Load<TextAsset>(episodePath);
             Episode currentEpisode = JsonUtility.FromJson<Episode>(episodeFile.text);
             currentEpisode.ClearDataFile(episode);
@@ -264,6 +261,14 @@ namespace StoryGenerator
 
             InitRooms();
 
+            cameraInitializer.initialized = false;
+
+            if (currentGraph == null)
+            {
+                currentGraphCreator = new EnvironmentGraphCreator(dataProviders);
+                currentGraph = currentGraphCreator.CreateGraph(transform);
+            }
+                
             //add one character by default
             CharacterConfig configchar = new CharacterConfig();//JsonConvert.DeserializeObject<CharacterConfig>(networkRequest.stringParams[0]);
             CharacterControl newchar;
@@ -276,17 +281,9 @@ namespace StoryGenerator
             List<Camera> charCameras = CameraExpander.AddCharacterCameras(newchar.gameObject, transform, "");
             CameraUtils.DeactivateCameras(charCameras);
             cameras.AddRange(charCameras);
-            cameraInitializer.initialized = false;
 
-            if (currentGraph == null)
-            {
-                currentGraphCreator = new EnvironmentGraphCreator(dataProviders);
-                currentGraph = currentGraphCreator.CreateGraph(transform);
-            }
-            else
-            {
-                currentGraph = currentGraphCreator.UpdateGraph(transform);
-            }
+            currentGraph = currentGraphCreator.UpdateGraph(transform);
+
             bool keyPressed = false;
             bool leftExecuted = false;
             bool rightExecuted = false;
@@ -580,22 +577,7 @@ namespace StoryGenerator
                         }
 
                     }
-                }
-
-                if (newchar.transform.position != currentEpisode.previousPos || newchar.transform.eulerAngles != currentEpisode.previousRotation)
-                {
-                    currentEpisode.AddCharInfo(newchar.transform.position, newchar.transform.eulerAngles, Time.time);
-                }
-                currentEpisode.previousPos = newchar.transform.position;
-                currentEpisode.previousRotation = newchar.transform.eulerAngles;
-
-                if (currentEpisode.IsCompleted)
-                {
-                    currentEpisode.RecordData(episode);
-                    episodeDone = true;
-                    episodeNum++;
-                }
-                
+                }                
 
                 if (keyPressed)
                 {
@@ -634,17 +616,28 @@ namespace StoryGenerator
                     click = false;
                     Debug.Log("action executed");
                 }
+                if (newchar.transform.position != currentEpisode.previousPos || newchar.transform.eulerAngles != currentEpisode.previousRotation)
+                {
+                    currentEpisode.AddCharInfo(newchar.transform.position, newchar.transform.eulerAngles, Time.time);
+                }
+                currentEpisode.previousPos = newchar.transform.position;
+                currentEpisode.previousRotation = newchar.transform.eulerAngles;
+
+                if (currentEpisode.IsCompleted)
+                {
+                    currentEpisode.RecordData(episode);
+                    episodeDone = true;
+                    episodeNum++;
+                }
                 yield return null;
             }
             Debug.Log("done");
             EpisodeNumber.episodeNum++;
-            string nextEpisodePath = $"Episodes/Episode{episode + 1}";
+            string nextEpisodePath = $"Episodes/pilot_task_id_{EpisodeNumber.episodeNum}";
             TextAsset nextEpisodeFile = Resources.Load<TextAsset>(nextEpisodePath);
             Episode nextEpisode = JsonUtility.FromJson<Episode>(nextEpisodeFile.text);
-            nextEpisode.ClearDataFile(episode + 1);
             int nextSceneIndex = nextEpisode.env_id;
-            if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings
-                && SceneManager.GetActiveScene().buildIndex != nextSceneIndex)
+            if (nextSceneIndex >= 0 && nextSceneIndex < SceneManager.sceneCountInBuildSettings)
             {
                 Debug.Log($"loading episode: {nextSceneIndex}");
                 SceneManager.LoadScene(nextSceneIndex);
