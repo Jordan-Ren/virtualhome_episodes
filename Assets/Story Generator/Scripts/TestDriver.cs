@@ -341,7 +341,8 @@ namespace StoryGenerator
             //add one character by default
             CharacterConfig configchar = new CharacterConfig();//JsonConvert.DeserializeObject<CharacterConfig>(networkRequest.stringParams[0]);
             CharacterControl newchar;
-            newchar = AddCharacter(configchar.character_resource, false, configchar.mode, configchar.character_position, configchar.initial_room);
+            Debug.Log(currentEpisode.init_rooms[0]);
+            newchar = AddCharacter(configchar.character_resource, false, "fix_room", configchar.character_position, currentEpisode.init_rooms[0]);
 
 
             characters.Add(newchar);
@@ -381,7 +382,6 @@ namespace StoryGenerator
             TextMeshProUGUI tasksUI = canv.gameObject.AddComponent<TextMeshProUGUI>();
             List<string> goals = new List<string>();
             tasksUI.fontSize = 12;
-            tasksUI.margin = new Vector4(65, 50, 0, 0);
             tasksUI.text = currentEpisode.GenerateTasksAndGoals();
 
             AddButton("Open");
