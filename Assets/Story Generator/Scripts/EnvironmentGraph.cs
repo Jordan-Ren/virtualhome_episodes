@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace StoryGenerator.Utilities
 {
-
+    [Serializable]
     public enum ObjectRelation
     {
         ON,
@@ -26,6 +26,7 @@ namespace StoryGenerator.Utilities
         SITTING
     }
 
+    [Serializable]
     public enum ObjectState
     {
         CLOSED,
@@ -45,7 +46,7 @@ namespace StoryGenerator.Utilities
     //    OPENABLE,
     //    SITTABLE,
     //}
-
+    [Serializable]
     public class ObjectBounds
     {
         private Bounds unityBounds;
@@ -108,6 +109,7 @@ namespace StoryGenerator.Utilities
             this.character = character;
         }
     }
+    [Serializable]
     public class ObjectTransform
     {
         public float[] position;
@@ -133,11 +135,11 @@ namespace StoryGenerator.Utilities
         }
     }
 
-    [Serializable]
     // Represents scene objects; nodes of the environment graph
+    [System.Serializable]
     public class EnvironmentObject : IEquatable<EnvironmentObject>
     {
-        public int id { get; set; }  // Unique id
+        public int id; // Unique id
 
         [JsonIgnore]
         private Transform ts;
@@ -152,20 +154,20 @@ namespace StoryGenerator.Utilities
             }
         }
 
-        public String category { get; set; }  // Category of this object (Character, Room, ...)
+        public String category;  // Category of this object (Character, Room, ...)
 
-        public string class_name { get; set; }  // Object class name (className from PrefabClass.json, "unknown" in not present)
+        public string class_name;  // Object class name (className from PrefabClass.json, "unknown" in not present)
 
-        public string prefab_name { get; set; }  // GameObject name
+        public string prefab_name;  // GameObject name
 
-        public ObjectTransform obj_transform { get; set; }
+        public ObjectTransform obj_transform;
 
-        public ObjectBounds bounding_box { get; set; }  // Axis aligned bounding box
+        public ObjectBounds bounding_box;  // Axis aligned bounding box
 
-        public ICollection<string> properties { get; set; } = new List<string>();  // List of properties ("SITTABLE", ...), from PropertiesData.json
+        public ICollection<string> properties = new List<string>();  // List of properties ("SITTABLE", ...), from PropertiesData.json
 
         [JsonProperty(ItemConverterType = typeof(StringEnumConverter))]
-        public ISet<ObjectState> states { get; set; } = new HashSet<ObjectState>();  // List of states (CLOSED, OPEN, ON, OFF, ...) 
+        public ISet<ObjectState> states = new HashSet<ObjectState>();  // List of states (CLOSED, OPEN, ON, OFF, ...) 
 
         public bool Equals(EnvironmentObject other)
         {
@@ -202,19 +204,19 @@ namespace StoryGenerator.Utilities
 
     // Represents edges of the environment graph
     // Eg, for Milk (from) in (relation) Fridge (to)
-    [Serializable]
+    [System.Serializable]
     public class EnvironmentRelation
     {
-        public int from_id { get; set; }  // First node (object id)
+        public int from_id;  // First node (object id)
 
-        public int to_id { get; set; }  // Second node (object id)
+        public int to_id;  // Second node (object id)
 
         [JsonConverter(typeof(StringEnumConverter))]
-        public ObjectRelation relation_type { get; set; }  // Relation type
+        public ObjectRelation relation_type;  // Relation type
 
     }
 
-    [Serializable]
+    [System.Serializable]
     public class EnvironmentGraph
     {
         // We assign 1-10 as the id range reserved only for characters Object> characters = new List<EnvironmentObject>();
