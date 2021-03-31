@@ -308,6 +308,7 @@ namespace StoryGenerator
                     AnimateCharacter = graph_config.animate_character,
                     TransferTransform = graph_config.transfer_transform
                 };
+
                 Debug.Log("got past new graph expander");
 
                 // TODO: set this with a flag
@@ -684,6 +685,8 @@ namespace StoryGenerator
                     keyPressed = false;
                     click = false;
                     Debug.Log("action executed");
+
+                    currentEpisode.StoreGraph(currentGraph);
                 }
                 if (newchar.transform.position != currentEpisode.previousPos || newchar.transform.eulerAngles != currentEpisode.previousRotation)
                 {
@@ -2151,6 +2154,8 @@ namespace StoryGenerator
         public List<Goal> goals = new List<Goal>();
         public bool IsCompleted = false;
 
+        private List<EnvironmentGraph> allGraphs = new List<EnvironmentGraph>();
+
         private List<(Vector3, Vector3, float)> posAndRotation = new List<(Vector3, Vector3, float)>();
 
         private List<(string, float)> scriptActions = new List<(string, float)>();
@@ -2175,6 +2180,10 @@ namespace StoryGenerator
             foreach ((string, float) action in scriptActions)
             {
                 outputFile.WriteLine(action);
+            }
+            foreach (EnvironmentGraph g in allGraphs)
+            {
+                outputFile.WriteLine(g.ToString());
             }
             outputFile.Close();
         }
@@ -2256,6 +2265,12 @@ namespace StoryGenerator
                 }
             }
             return response;
+        }
+
+        public void StoreGraph(EnvironmentGraph g)
+        {
+            Debug.Log(g.ToString());
+            allGraphs.Add(g);
         }
 
     }

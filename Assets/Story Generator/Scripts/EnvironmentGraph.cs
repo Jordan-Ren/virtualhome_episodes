@@ -133,6 +133,7 @@ namespace StoryGenerator.Utilities
         }
     }
 
+    [Serializable]
     // Represents scene objects; nodes of the environment graph
     public class EnvironmentObject : IEquatable<EnvironmentObject>
     {
@@ -201,6 +202,7 @@ namespace StoryGenerator.Utilities
 
     // Represents edges of the environment graph
     // Eg, for Milk (from) in (relation) Fridge (to)
+    [Serializable]
     public class EnvironmentRelation
     {
         public int from_id { get; set; }  // First node (object id)
@@ -212,6 +214,7 @@ namespace StoryGenerator.Utilities
 
     }
 
+    [Serializable]
     public class EnvironmentGraph
     {
         // We assign 1-10 as the id range reserved only for characters Object> characters = new List<EnvironmentObject>();
