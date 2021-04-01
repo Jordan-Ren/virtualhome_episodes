@@ -686,7 +686,7 @@ namespace StoryGenerator
                     click = false;
                     Debug.Log("action executed");
 
-                    currentEpisode.StoreGraph(currentGraph);
+                    currentEpisode.StoreGraph(currentGraph, currTime);
                 }
                 if (newchar.transform.position != currentEpisode.previousPos || newchar.transform.eulerAngles != currentEpisode.previousRotation)
                 {
@@ -697,6 +697,7 @@ namespace StoryGenerator
 
                 if (currentEpisode.IsCompleted)
                 {
+                    tasksUI.text = "Taks: Completed!";
                     currentEpisode.RecordData(episode);
                     episodeDone = true;
                     episodeNum++;
@@ -1956,8 +1957,7 @@ namespace StoryGenerator
                         }
                     }
                     var nma = newCharacter.GetComponent<NavMeshAgent>();
-                    nma.Warp(ScriptUtils.FindRandomCCPosition(rooms_selected, cc));
-                    newCharacter.transform.rotation *= Quaternion.Euler(0, UnityEngine.Random.Range(-180.0f, 180.0f), 0);
+                    nma.Warp(ScriptUtils.FindCCPosition(rooms_selected[0], cc));
                 }
                 // Must be called after correct char placement so that char's location doesn't change
                 // after instantiation.
@@ -2154,7 +2154,7 @@ namespace StoryGenerator
         public List<Goal> goals = new List<Goal>();
         public bool IsCompleted = false;
 
-        private List<EnvironmentGraph> allGraphs = new List<EnvironmentGraph>();
+        private List<(string, float)> allGraphs = new List<(string, float)>();
 
         private List<(Vector3, Vector3, float)> posAndRotation = new List<(Vector3, Vector3, float)>();
 
@@ -2173,15 +2173,18 @@ namespace StoryGenerator
         {
             string outputPath = $"Assets/Resources/Episodes/Episode{episode}Data.txt";
             StreamWriter outputFile = new StreamWriter(outputPath, true);
+            outputFile.WriteLine("Position and Orientation Data:");
             foreach ((Vector3, Vector3, float) pos in posAndRotation)
             {
                 outputFile.WriteLine(pos.ToString());
             }
+            outputFile.WriteLine("Script Action Data:");
             foreach ((string, float) action in scriptActions)
             {
                 outputFile.WriteLine(action);
             }
-            foreach (EnvironmentGraph g in allGraphs)
+            outputFile.WriteLine("Graph Data:");
+            foreach ((string, float) g in allGraphs)
             {
                 outputFile.WriteLine(g.ToString());
             }
@@ -2267,10 +2270,10 @@ namespace StoryGenerator
             return response;
         }
 
-        public void StoreGraph(EnvironmentGraph g)
+        public void StoreGraph(EnvironmentGraph g, float t)
         {
-            Debug.Log(g.ToString());
-            allGraphs.Add(g);
+            string graphString = JsonUtility.ToJson(g);
+            allGraphs.Add((graphString, t));
         }
 
     }
