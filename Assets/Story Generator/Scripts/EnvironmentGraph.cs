@@ -164,7 +164,7 @@ namespace StoryGenerator.Utilities
 
         public ObjectBounds bounding_box;  // Axis aligned bounding box
 
-        public ICollection<string> properties = new List<string>();  // List of properties ("SITTABLE", ...), from PropertiesData.json
+        public List<string> properties = new List<string>();  // List of properties ("SITTABLE", ...), from PropertiesData.json
 
         [JsonProperty(ItemConverterType = typeof(StringEnumConverter))]
         public ISet<ObjectState> states = new HashSet<ObjectState>();  // List of states (CLOSED, OPEN, ON, OFF, ...) 
@@ -644,7 +644,7 @@ namespace StoryGenerator.Utilities
             if (bounds == null)
                 return null;
 
-            ICollection<string> properties = ObjectProperties(className);
+            List<string> properties = ObjectProperties(className).ToList();
 
             EnvironmentObject node = new EnvironmentObject() {
                 transform = transform,
